@@ -1,3 +1,9 @@
+**Compiling**
+
+Execute
+
+```sh make.sh``` 
+
 **Dependencies**
 
 Debian/ubuntu:
