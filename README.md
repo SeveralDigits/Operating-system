@@ -2,7 +2,13 @@
 
 Execute
 
+```make``` 
+
+Or
+
 ```sh make.sh``` 
+
+
 
 **Dependencies**
 
