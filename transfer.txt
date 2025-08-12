@@ -1,49 +1,85 @@
-#include <stdint.h>
+BITS 16
+ORG 0x7C00
 
-struct multiboot_info {
-    uint32_t flags;
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t boot_device;
-    uint32_t cmdline;
-    uint32_t mods_count;
-    uint32_t mods_addr;
-    uint32_t syms[4];
-    uint32_t mmap_length;
-    uint32_t mmap_addr;
-    uint32_t drives_length;
-    uint32_t drives_addr;
-    uint32_t config_table;
-    uint32_t boot_loader_name;
-    uint32_t apm_table;
-    uint32_t vbe_control_info;
-    uint32_t vbe_mode_info;
-    uint16_t vbe_mode;
-    uint16_t vbe_interface_seg;
-    uint16_t vbe_interface_off;
-    uint16_t vbe_interface_len;
+start:
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
 
-    // Framebuffer info
-    uint64_t framebuffer_addr;
-    uint32_t framebuffer_pitch;
-    uint32_t framebuffer_width;
-    uint32_t framebuffer_height;
-    uint8_t framebuffer_bpp;
-    uint8_t framebuffer_type;
-    uint8_t reserved;
-};
+    ; === Set video mode 80x25 text ===
+    mov ax, 0x0003
+    int 0x10
 
-void kmain(struct multiboot_info* mb) {
-    uint32_t* fb = (uint32_t*)(uintptr_t)mb->framebuffer_addr;
-    uint32_t width = mb->framebuffer_width;
-    uint32_t height = mb->framebuffer_height;
+    ; === Load kernel from disk ===
+    mov ah, 0x02        ; BIOS read sectors
+    mov al, 20          ; number of sectors to read
+    mov ch, 0           ; cylinder
+    mov cl, 2           ; sector (start from 2, since sector 1 is bootloader)
+    mov dh, 0           ; head
+    mov dl, 0x80        ; first hard disk
+    mov bx, 0x1000      ; load to 0x1000:0000
+    mov es, bx
+    xor bx, bx
+    int 0x13
+    jc disk_error
 
-    // Fill screen with red
-    for (uint32_t y = 0; y < height; y++) {
-        for (uint32_t x = 0; x < width; x++) {
-            fb[y * (mb->framebuffer_pitch / 4) + x] = 0x00FF0000; // Red in 0x00RRGGBB
-        }
-    }
+    ; === Enter protected mode ===
+    cli
+    lgdt [gdt_descriptor]
 
-    for (;;) __asm__ __volatile__("hlt");
-}
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+
+    jmp CODE_SEG:init_pm
+
+disk_error:
+    mov ah, 0x0E
+    mov al, 'E'
+    int 0x10
+hang:
+    hlt
+    jmp hang
+
+; ---------------------------
+; GDT setup
+; ---------------------------
+gdt_start:
+    dq 0x0000000000000000     ; null descriptor
+    dq 0x00CF9A000000FFFF     ; code segment
+    dq 0x00CF92000000FFFF     ; data segment
+gdt_end:
+
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
+
+CODE_SEG equ 0x08
+DATA_SEG equ 0x10
+
+; ---------------------------
+; 32-bit mode entry
+; ---------------------------
+[BITS 32]
+init_pm:
+    mov ax, DATA_SEG
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov esp, 0x90000
+
+    ; Jump to loaded kernel at 0x10000
+    call 0x10000
+
+hang_pm:
+    hlt
+    jmp hang_pm
+
+; Boot sector signature
+times 510-($-$$) db 0
+dw 0xAA55
