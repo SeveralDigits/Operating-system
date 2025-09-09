@@ -14,9 +14,6 @@ start:
     mov al, 0x0D
     int 0x10
 
-    ; Setup GDT (just like before)
-    ; ... your GDT setup code here ...
-
     ; Enable protected mode
     mov eax, cr0
     or eax, 1
